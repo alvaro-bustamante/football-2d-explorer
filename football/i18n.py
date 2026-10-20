@@ -187,6 +187,9 @@ TEXTS: dict[str, dict[str, str]] = {
                           "servem para comparar equipas, não são o bloco exato. Elipses = variação da posição média "
                           "de cada jogador de jogo para jogo.")},
     "def_line": {"en": "Defensive line", "es": "Línea defensiva", "pt": "Linha defensiva"},
+    "luck_above": {"en": "More points than xPts", "es": "Más puntos que xPts", "pt": "Mais pontos que xPts"},
+    "luck_below": {"en": "Fewer points than xPts", "es": "Menos puntos que xPts", "pt": "Menos pontos que xPts"},
+    "last_round": {"en": "Last played: {r}", "es": "Última jugada: {r}", "pt": "Última jogada: {r}"},
     "centroid": {"en": "Team centroid", "es": "Centroide del equipo", "pt": "Centroide da equipa"},
     "block_type": {"en": "Block", "es": "Bloque", "pt": "Bloco"},
     "block_high": {"en": "HIGH", "es": "ALTO", "pt": "ALTO"},

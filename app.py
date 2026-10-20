@@ -118,6 +118,30 @@ def average_xi(team_id: int, min_starts: int) -> pd.DataFrame:
     return xi[xi["starts"] >= min_starts].sort_values("starts", ascending=False)
 
 
+def label_positions(X, Y, names) -> list[str]:
+    """'top center' unless the label would overlap one already placed; then below, then to the sides."""
+    placed, out = [], []
+    for xx, yy, name in sorted(zip(X, Y, names), key=lambda r: -r[1]):
+        w = 0.62 * len(str(name)) + 1.0               # label width in metres (approx.)
+        for pos, dx, dy in (("top center", 0, 2.6), ("bottom center", 0, -2.6),
+                            ("middle right", w / 2 + 1.4, 0), ("middle left", -w / 2 - 1.4, 0)):
+            box = (xx + dx - w / 2, yy + dy - 1.3, xx + dx + w / 2, yy + dy + 1.3)
+            if all(box[2] < b[0] or box[0] > b[2] or box[3] < b[1] or box[1] > b[3] for b in placed):
+                break
+        placed.append(box)
+        out.append((xx, yy, pos))
+    order = {(xx, yy): pos for xx, yy, pos in out}
+    return [order[(xx, yy)] for xx, yy in zip(X, Y)]
+
+
+def last_round(team_id) -> int | None:
+    m = data["matches"]
+    if "round" not in m or m.empty:
+        return None
+    r = pd.to_numeric(m.loc[m["team_id"] == team_id, "round"], errors="coerce").max()
+    return int(r) if np.isfinite(r) else None
+
+
 if view == t("view_pitch"):
     st.title(t("view_pitch"))
     st.caption(t("pitch_note"))
@@ -132,35 +156,47 @@ if view == t("view_pitch"):
     min_starts = c3.number_input(t("min_matches"), 1, max(games_played, 1), min(3, max(games_played, 1)))
     blocks = {m.key: evaluate(m, T) for m in TEAM_METRICS if m.key in ("def_line", "centroid", "length", "width", "area")}
     btype = block_type(blocks["def_line"]["adjusted"])
-    fig = pitch_figure()
-    for team_id, flip in ((tid, False), (tid2, True)):
-        if team_id is None:
-            continue
+    from core.images import CROP_VERSION
+    crest_col = T.get("info_crest_url", pd.Series(None, index=T.index))
+    picked = [i for i in (tid, tid2) if i is not None]
+    crest_urls_pitch = tuple(u for u in (crest_col.get(i) for i in picked) if isinstance(u, str) and u)
+    ready_crests = prepared_images(crest_urls_pitch, "crest", CROP_VERSION) if crest_urls_pitch else {}
+    cols = st.columns(len(picked))
+    for column, team_id in zip(cols, picked):
+        fig = pitch_figure()
         xi = average_xi(team_id, min_starts)
         col = team_color[team_id]
-        X = PITCH_LENGTH - xi["x"] if flip else xi["x"]
-        Y = PITCH_WIDTH - xi["y"] if flip else xi["y"]
+        X, Y = xi["x"].to_numpy(), xi["y"].to_numpy()
         for xx, yy, sx, sy in zip(X, Y, xi["sx"].fillna(0), xi["sy"].fillna(0)):
-            ex, ey = ellipse_path(xx, yy, max(sx, 0.5), max(sy, 0.5))
-            fig.add_trace(go.Scatter(x=ex, y=ey, mode="lines", fill="toself", line=dict(color=col, width=1),
+            ex_, ey_ = ellipse_path(xx, yy, max(sx, 0.5), max(sy, 0.5))
+            fig.add_trace(go.Scatter(x=ex_, y=ey_, mode="lines", fill="toself", line=dict(color=col, width=1),
                                      fillcolor=col, opacity=0.18, hoverinfo="skip", showlegend=False))
-        fig.add_trace(go.Scatter(x=X, y=Y, mode="markers+text", text=xi["name"], textposition="top center",
+        fig.add_trace(go.Scatter(x=X, y=Y, mode="markers+text", text=xi["name"],
+                                 textposition=label_positions(X, Y, xi["name"]),
                                  marker=dict(size=13, color=col, line=dict(color="white", width=1)),
-                                 textfont=dict(size=10), name=team_short[team_id],
+                                 textfont=dict(size=10), showlegend=False,
                                  hovertext=[f"{n} · {p} · {s}" for n, p, s in zip(xi["name"], xi["position"], xi["starts"])],
                                  hoverinfo="text"))
         dl = blocks["def_line"].loc[team_id, "adjusted"]
         ce = blocks["centroid"].loc[team_id, "adjusted"]
-        for val, dash, lab in ((dl, "dash", t("def_line")), (ce, "dot", t("centroid"))):
-            xv = PITCH_LENGTH - val if flip else val
-            fig.add_shape(type="line", x0=xv, x1=xv, y0=0, y1=PITCH_WIDTH, line=dict(color=col, width=2, dash=dash))
-            fig.add_annotation(x=xv, y=PITCH_WIDTH + 2, text=f"{lab} {val:.0f} m", showarrow=False,
-                               font=dict(size=SMALL, color=col))
-    title = f"{team_short[tid]} · {t('block_type')} {t('block_' + btype[tid])}"
-    if tid2 is not None:
-        title += f"  vs  {team_short[tid2]} · {t('block_type')} {t('block_' + btype[tid2])}"
-    fig.update_layout(title=title)
-    st.plotly_chart(fig)
+        # defensive line labelled above the pitch, centroid below it: they never collide
+        for val, dash, lab, yv, anchor in ((dl, "dash", t("def_line"), PITCH_WIDTH + 1.2, "bottom"),
+                                          (ce, "dot", t("centroid"), -1.2, "top")):
+            fig.add_shape(type="line", x0=val, x1=val, y0=0, y1=PITCH_WIDTH, line=dict(color=col, width=2, dash=dash))
+            fig.add_annotation(x=val, y=yv, yanchor=anchor, text=f"<b>{lab} {val:.0f} m</b>", showarrow=False,
+                               font=dict(size=SMALL, color=col), bgcolor="rgba(0,0,0,0.35)", borderpad=2)
+        rnd = last_round(team_id)
+        crest = ready_crests.get(crest_col.get(team_id))
+        if crest:
+            fig.add_layout_image(source=crest, xref="paper", yref="paper", x=0, y=1.0, sizex=0.11, sizey=0.11,
+                                 xanchor="left", yanchor="bottom")
+        head = f"<b>{smart_upper(team_short[team_id])}</b>"
+        head += f"  ·  {t('round_word')} {rnd}" if rnd else ""
+        head += f"<br><span style='font-size:12px'>{t('block_type')} {t('block_' + btype[team_id])}</span>"
+        fig.update_layout(title=dict(text=head, x=0.13 if crest else 0.0, xanchor="left", y=0.97),
+                          margin=dict(l=10, r=10, t=90, b=10), height=520, showlegend=False)
+        fig.update_yaxes(range=[-5, PITCH_WIDTH + 5])
+        column.plotly_chart(fig, key=f"pitch_{team_id}")
     st.subheader(t("block_table"))
     tab = pd.DataFrame({t("team"): team_short, t("block_type"): btype.map(lambda b: t("block_" + b))})
     for key, ev in blocks.items():
@@ -355,8 +391,13 @@ if show_trails:   # faint line from the observed value to the adjusted one (the 
 if luck_view:
     lo = float(np.nanmin([np.nanmin(x), np.nanmin(y)])) - 0.1
     hi = float(np.nanmax([np.nanmax(x), np.nanmax(y)])) + 0.1
-    fig.add_trace(go.Scatter(x=[lo, hi], y=[lo, hi], mode="lines", line=dict(color="#888", dash="dash"),
-                             hoverinfo="skip", showlegend=False))
+    fig.add_trace(go.Scatter(x=[lo - 50, hi + 50], y=[lo - 50, hi + 50], mode="lines",
+                             line=dict(color="#888", dash="dash"), hoverinfo="skip", showlegend=False))
+    for txt, colr, xa, ya, xan, yan in ((f"▲ {t('luck_above')}", "#2E9E44", 0.006, 0.994, "left", "top"),
+                                        (f"▼ {t('luck_below')}", "#D64545", 0.994, 0.006, "right", "bottom")):
+        fig.add_annotation(xref="paper", yref="paper", x=xa, y=ya, xanchor=xan, yanchor=yan, showarrow=False,
+                           text=f"<b>{smart_upper(txt)}</b>", font=dict(size=SMALL + 1, color=colr, family=BADGE_FONT),
+                           bgcolor=badge_fill(colr), bordercolor=colr, borderwidth=1, borderpad=3)
 
 show_text = label_mode != "lab_none" and not use_images and (is_teams or len(frame) <= 25)
 text = [lab if (show_text or h) else "" for lab, h in zip(labels, is_hl)]
@@ -400,8 +441,29 @@ for j, board in enumerate(boards):
     fig.add_annotation(xref="paper", yref="paper", showarrow=False, align="left", x=0, y=-0.11 - 0.075 * j,
                        xanchor="left", yanchor="top", text=leaders_html(board), font=dict(size=SMALL))
     bottom = 150
-fig.update_xaxes(title=mx.label, autorange="reversed" if inv_x else True)
-fig.update_yaxes(title=my.label, autorange="reversed" if inv_y else True)
+
+
+def padded_range(values, ells, axis, frac_low, frac_high, extra):
+    """Range covering points and ellipses plus room for badges (fraction of the axis) and half an image."""
+    vals = [v for v in np.asarray(values, float) if np.isfinite(v)]
+    for e in ells:
+        c, r = (e[0], e[2]) if axis == "x" else (e[1], e[3])
+        vals += [c - r, c + r]
+    lo, hi = min(vals), max(vals)
+    span = (hi - lo) or 1.0
+    total = (span + 2 * extra) / max(1 - frac_low - frac_high, 0.3)
+    return lo - extra - frac_low * total, hi + extra + frac_high * total
+
+
+plot_h = 720 - 40 - bottom - 60
+band = (64 / plot_h) if (show_quadrants and not luck_view) else (34 / plot_h) if luck_view else 0.02
+img_x = img_y = 0.0
+if use_images:
+    img_x, img_y = 0.5 * size * xr * 1.35, 0.5 * size * yr * 1.35
+x_range = padded_range(x, ellipses, "x", 0.02, 0.02, img_x)
+y_range = padded_range(y, ellipses, "y", band, band, img_y)
+fig.update_xaxes(title=mx.label, range=x_range[::-1] if inv_x else x_range, autorange=False)
+fig.update_yaxes(title=my.label, range=y_range[::-1] if inv_y else y_range, autorange=False)
 fig.update_layout(height=720, margin=dict(l=10, r=10, t=40, b=bottom),
                   title=(f"{round_text.upper()} · " if round_text else "") + f"{my.label} vs {mx.label}")
 st.plotly_chart(fig)
@@ -465,6 +527,7 @@ if export is not None:
         "round": round_text, "ellipses": ellipses,
         "medians": (float(np.nanmedian(x)), float(np.nanmedian(y))) if show_medians and not luck_view else None,
         "quadrants": quads if show_quadrants and not luck_view else None, "leaders": boards,
+        "diagonal": luck_view, "diagonal_labels": (t("luck_above"), t("luck_below")),
         "estimate": "Bayes-adjusted" if estimate == "adjusted" else "Observed",
         "ci_level": ci_level if show_ellipses else None,
         "note_texts": {"Observed": t("export_obs"), "Bayes-adjusted": t("export_adj"),
