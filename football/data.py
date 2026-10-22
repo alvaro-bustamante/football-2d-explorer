@@ -23,7 +23,14 @@ import pandas as pd
 DATA_DIR = Path("data")
 PARTS = ("matches", "teams", "players", "positions")
 LEAGUE_NAMES = {"laliga": "LaLiga", "premier-league": "Premier League", "serie-a": "Serie A",
-                "bundesliga": "Bundesliga", "ligue-1": "Ligue 1", "liga-portugal": "Liga Portugal"}
+                "bundesliga": "Bundesliga", "ligue-1": "Ligue 1", "liga-portugal": "Liga Portugal",
+                "champions-league": "UEFA Champions League",
+                "liga-f": "Liga F", "uwcl": "UEFA Women's Champions League"}
+WOMEN = {"liga-f", "uwcl"}
+
+
+def gender_of(prefix: str) -> str:
+    return "women" if prefix.rpartition("_")[0] in WOMEN else "men"
 
 
 def list_datasets(data_dir: Path = DATA_DIR) -> list[str]:

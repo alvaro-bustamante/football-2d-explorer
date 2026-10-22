@@ -1,6 +1,7 @@
 # Football 2D Explorer
 
-Compare **any two football metrics** for teams or players in the big European leagues, and see
+Compare **any two football metrics** for teams or players in the big European leagues and the Champions
+League, **men's and women's** (Liga F and the UEFA Women's Champions League), and see
 **how much of each difference is real** thanks to Bayesian uncertainty ellipses.
 Interface in **English, Spanish and Portuguese**.
 

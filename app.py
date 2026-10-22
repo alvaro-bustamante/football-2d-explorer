@@ -60,7 +60,8 @@ with st.sidebar:
     lang_name = st.selectbox("🌐 Language / Idioma", list(LANGS), index=1)
     set_lang(LANGS[lang_name])
     st.title("⚽ " + t("app_title"))
-    datasets = fdata.list_datasets()
+    gender = st.radio(t("gender"), ["men", "women"], horizontal=True, format_func=t)
+    datasets = [d for d in fdata.list_datasets() if fdata.gender_of(d) == gender]
     sources = ([t("saved")] if datasets else []) + [t("demo")]
     source = st.radio(t("data_source"), sources)
     if source == t("saved"):
