@@ -1,4 +1,4 @@
-"""Datasets: files in data/ (made by your own scraper or import) or fictional demo data.
+"""Datasets: a football-warehouse folder (or files in data/) and fictional demo data.
 
 A dataset is four CSV files sharing a prefix, e.g. data/laliga_26-27_*.csv:
 
@@ -21,11 +21,36 @@ import numpy as np
 import pandas as pd
 
 DATA_DIR = Path("data")
+
+
+def data_dir() -> Path:
+    """Where the datasets are: the football warehouse if there is one, else data/ in this project.
+
+    In this order: the environment variable FOOTBALL_WAREHOUSE, `football_warehouse_dir` in
+    .streamlit/secrets.toml, ../football-warehouse/data/warehouse (both projects side by side), data/."""
+    import os
+    candidates = [os.environ.get("FOOTBALL_WAREHOUSE")]
+    try:
+        import streamlit as st
+        candidates.append(st.secrets.get("football_warehouse_dir"))
+    except Exception:
+        pass
+    here = Path(__file__).resolve().parents[1]
+    candidates += [here.parent / "football-warehouse" / "data" / "warehouse", here / "data", DATA_DIR]
+    for c in candidates:
+        if c and Path(c).is_dir() and any(Path(c).glob("*_matches.csv")):
+            return Path(c)
+    return DATA_DIR
 PARTS = ("matches", "teams", "players", "positions")
 LEAGUE_NAMES = {"laliga": "LaLiga", "premier-league": "Premier League", "serie-a": "Serie A",
                 "bundesliga": "Bundesliga", "ligue-1": "Ligue 1", "liga-portugal": "Liga Portugal",
                 "champions-league": "UEFA Champions League",
-                "liga-f": "Liga F", "uwcl": "UEFA Women's Champions League"}
+                "liga-f": "Liga F", "uwcl": "UEFA Women's Champions League",
+                "eredivisie": "Eredivisie", "pro-league": "Pro League", "super-lig": "Süper Lig",
+                "premiership": "Scottish Premiership", "brasileirao": "Brasileirão", "liga-profesional": "Liga Profesional",
+                "mls": "MLS", "laliga2": "LaLiga Hypermotion", "championship": "Championship", "serie-b": "Serie B",
+                "2-bundesliga": "2. Bundesliga", "ligue-2": "Ligue 2", "europa-league": "UEFA Europa League",
+                "conference-league": "UEFA Conference League"}
 WOMEN = {"liga-f", "uwcl"}
 
 
@@ -33,7 +58,8 @@ def gender_of(prefix: str) -> str:
     return "women" if prefix.rpartition("_")[0] in WOMEN else "men"
 
 
-def list_datasets(data_dir: Path = DATA_DIR) -> list[str]:
+def list_datasets(data_dir: Path | None = None) -> list[str]:
+    data_dir = data_dir or globals()["data_dir"]()
     if not data_dir.exists():
         return []
     return sorted(f.name[:-len("_matches.csv")] for f in data_dir.glob("*_matches.csv"))
@@ -44,7 +70,8 @@ def dataset_label(prefix: str) -> str:
     return f"{LEAGUE_NAMES.get(slug, slug.replace('-', ' ').title())} {season.replace('-', '/')}"
 
 
-def load_dataset(prefix: str, data_dir: Path = DATA_DIR) -> dict[str, pd.DataFrame]:
+def load_dataset(prefix: str, data_dir: Path | None = None) -> dict[str, pd.DataFrame]:
+    data_dir = data_dir or globals()["data_dir"]()
     out = {}
     for part in PARTS:
         f = data_dir / f"{prefix}_{part}.csv"

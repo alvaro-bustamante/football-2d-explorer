@@ -533,4 +533,6 @@ if export is not None:
         "ci_level": ci_level if show_ellipses else None,
         "note_texts": {"Observed": t("export_obs"), "Bayes-adjusted": t("export_adj"),
                        "ellipses": t("export_ell", level=ci_level)},
+        "x_help": mx.help, "y_help": my.help, "better_x": mx.better, "better_y": my.better,
+        "names": list(full_names), "sport": "football",
     })
